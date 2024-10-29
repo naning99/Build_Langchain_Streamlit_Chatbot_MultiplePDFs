@@ -41,6 +41,10 @@ from langchain_community.vectorstores import FAISS
 from langchain.memory import ConversationBufferMemory
 from langchain.chains import ConversationalRetrievalChain
 from htmlTemplate import css, bot_template, user_template
+from langchain_core.runnables.history import RunnableWithMessageHistory
+from langchain_core.runnables import RunnableParallel, RunnablePassthrough
+from langchain import hub
+from langchain_core.output_parsers import StrOutputParser
 
 def get_pdf_text(pdf_docs):
     text = ""
@@ -66,27 +70,49 @@ def get_vectorestore(text_chunks):
     vectorsore = FAISS.from_texts(texts=text_chunks, embedding=embeddings)
     return vectorsore
 
+# def get_conversation_chain(vectorstore, user_question):
+#     llm = ChatOpenAI(base_url="https://api.bianxie.ai/v1")
+#     memory = ConversationBufferMemory(memory_key="chat_history", return_messages=True)
+#     conversation_chain = ConversationalRetrievalChain.from_llm(
+#         llm=llm,
+#         retriever=vectorstore.as_retriever(),
+#         memory=memory
+#     )
+#     response = conversation_chain.invoke({'question': user_question})
+#     return response
+
+
 def get_conversation_chain(vectorstore, user_question):
-    llm = ChatOpenAI(base_url="https://api.bianxie.ai/v1")
-    memory = ConversationBufferMemory(memory_key="chat_history", return_messages=True)
-    conversation_chain = ConversationalRetrievalChain.from_llm(
-        llm=llm,
-        retriever=vectorstore.as_retriever(),
-        memory=memory
+    llm = ChatOpenAI(base_url = "https://api.bianxie.ai/v1")
+    conversation_chain = RunnableWithMessageHistory(
+        llm = llm,
+        input_messages_key="question",
+        history_messages_key="history"
     )
     response = conversation_chain.invoke({'question': user_question})
     return response
-
-# def handle_userinput(user_question):
-#     response = st.session_state.conversation({'question': user_question})
-#     st.write(response)
        
-
 load_dotenv()
 text_chunks = get_text_chunks(raw_text)
 vectorstore = get_vectorestore(text_chunks)
 user_question = "what is this pdf about?"
-response = get_conversation_chain(vectorstore, user_question)
+#response = get_conversation_chain(vectorstore, user_question)
+#print(response)
+
+prompt = hub.pull("rlm/rag-prompt")
+print(prompt)
+print("\n\n")
+
+llm = ChatOpenAI(base_url="https://api.bianxie.ai/v1")
+
+rag_chain = (
+    {"context": vectorstore.as_retriever(), "question": RunnablePassthrough()}
+    | prompt
+    | llm
+    | StrOutputParser()
+)
+
+response = rag_chain.invoke(user_question)
 print(response)
 
     
